@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    mem_limit: 512m
+    pids_limit: 50
+    cpus: 1.0
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 50
+    cpus: 0.25
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    mem_limit: 768m
+    pids_limit: 100
+    cpus: 0.5
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      TZ: ${TZ:-Europe/Moscow}
+    dns:
+      # 2026-06-21: единый dnsmasq-кеш на gateway сети task-bot_default (172.16.1.1).
+      # До этого было [1.1.1.1, 8.8.8.8, 9.9.9.9] параллельно — 20.06 все три флапнули
+      # одновременно (~30 сек), polling-generation бота упал на DNSError api.telegram.org.
+      # dnsmasq на хосте слушает на 172.16.1.1:53 (gateway этой compose-сети) +
+      # 172.17.0.1, 172.18.0.1, 172.19.0.1 (другие docker bridges). Кеш min-ttl 60s
+      # поглощает короткие флапы upstream. UFW открыт для всех bridge-iface:53.
+      - 172.16.1.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

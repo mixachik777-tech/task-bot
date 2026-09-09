@@ -1,0 +1,12 @@
+[Unit]
+Description=Run task-bot daily backup at 03:00 MSK
+Requires=task-bot-backup.service
+
+[Timer]
+# 03:00 МСК == 00:00 UTC. Сервер живёт в UTC, поэтому ставим 00:00.
+OnCalendar=*-*-* 00:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
